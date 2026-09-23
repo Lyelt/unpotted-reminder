@@ -227,7 +227,7 @@ public interface UnpottedReminderConfig extends Config
 			description = "Text shown in the overlay, infobox tooltip, and notification", position = 8, section = RANGED_SECTION)
 	default String rangedAlertMessage()
 	{
-		return "Drink a boost potion!";
+		return "Ranged is unboosted!";
 	}
 
 	@ConfigItem(keyName = "magicExperienceThreshold", name = "Xp Threshold",
@@ -274,7 +274,7 @@ public interface UnpottedReminderConfig extends Config
 			description = "Text shown in the overlay, infobox tooltip, and notification", position = 8, section = MAGIC_SECTION)
 	default String magicAlertMessage()
 	{
-		return "Drink a boost potion!";
+		return "Magic is unboosted!";
 	}
 
 	@ConfigItem(
@@ -396,7 +396,7 @@ public interface UnpottedReminderConfig extends Config
 	)
 	default String meleeAlertMessage()
 	{
-		return "Drink a boost potion!";
+		return "Melee stats unboosted!";
 	}
 
 	@ConfigItem(keyName = "enableSurge", name = "Alert for Surge",
