@@ -34,11 +34,14 @@ import java.awt.image.BufferedImage;
 class UnpottedReminderInfoBox extends InfoBox
 {
 	private final UnpottedReminderConfig config;
+	private final UnpottedReminderPlugin.AlertType type;
 
-	UnpottedReminderInfoBox(BufferedImage vialImage, Plugin plugin, UnpottedReminderConfig config)
+	UnpottedReminderInfoBox(BufferedImage vialImage, Plugin plugin, UnpottedReminderConfig config,
+		UnpottedReminderPlugin.AlertType type)
 	{
 		super(vialImage, plugin);
 		this.config = config;
+		this.type = type;
 	}
 
 	@Override
@@ -56,6 +59,6 @@ class UnpottedReminderInfoBox extends InfoBox
 	@Override
 	public String getTooltip()
 	{
-		return UnpottedReminderPlugin.resolveAlertMessage(config);
+		return UnpottedReminderPlugin.resolveAlertMessage(config, type);
 	}
 }

@@ -30,3 +30,10 @@ sourceCompatibility = '1.8'
 tasks.withType(JavaCompile) {
 	options.encoding = 'UTF-8'
 }
+
+task run(type: JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.unpottedreminder.UnpottedReminderPluginTest'
+	jvmArgs '-ea'
+	args '--developer-mode', '--debug'
+}

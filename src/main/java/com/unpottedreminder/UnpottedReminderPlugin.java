@@ -30,12 +30,15 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
 import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.VarPlayerID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.game.ItemVariationMapping;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -44,6 +47,7 @@ import net.runelite.client.util.Text;
 import net.runelite.client.util.WildcardMatcher;
 
 import javax.inject.Inject;
+import java.awt.Color;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -63,9 +67,6 @@ public class UnpottedReminderPlugin extends Plugin
 	private UnpottedReminderConfig config;
 
 	@Inject
-	private UnpottedReminderOverlay overlay;
-
-	@Inject
 	private Notifier notifier;
 
 	@Inject
@@ -80,18 +81,21 @@ public class UnpottedReminderPlugin extends Plugin
 	@Inject
 	private ItemManager itemManager;
 
-	private UnpottedReminderInfoBox infoBox;
+	private final EnumMap<AlertType, UnpottedReminderOverlay> overlays = new EnumMap<>(AlertType.class);
+	private final EnumMap<AlertType, UnpottedReminderInfoBox> infoBoxes = new EnumMap<>(AlertType.class);
 
 	private Item[] playerItems;
 
 	private List<String> blacklisted = new ArrayList<>();
 	private List<String> whitelisted = new ArrayList<>();
 
-	private Instant alertStart;
-	private Instant lastNotify;
+	private final EnumMap<AlertType, Instant> alertStarts = new EnumMap<>(AlertType.class);
+	private final EnumMap<AlertType, Instant> lastNotifies = new EnumMap<>(AlertType.class);
 	private int potionLastDrankGameCycle;
+	private Actor combatTarget;
 	
 	static final String DEFAULT_ALERT_MESSAGE = "Drink a boost potion!";
+	enum AlertType { MELEE, RANGED, MAGIC, SURGE, PRAYER }
 
 	private static final int IMBUED_HEART_GRAPHIC = 1316;
 	private static final int SATURATED_HEART_GRAPHIC = 2287;
@@ -169,7 +173,11 @@ public class UnpottedReminderPlugin extends Plugin
 		blacklisted = splitList(config.blacklist());
 		whitelisted = splitList(config.whitelist());
 
-		infoBox = new UnpottedReminderInfoBox(itemManager.getImage(ItemID.VIAL_EMPTY), this, config);
+		for (AlertType type : AlertType.values())
+		{
+			overlays.put(type, new UnpottedReminderOverlay(client, config, itemManager, type));
+			infoBoxes.put(type, new UnpottedReminderInfoBox(itemManager.getImage(ItemID.VIAL_EMPTY), this, config, type));
+		}
 
 		clientThread.invoke(() ->
 		{
@@ -184,6 +192,7 @@ public class UnpottedReminderPlugin extends Plugin
 				if (inventory != null)
 				{
 					playerItems = inventory.getItems();
+					checkUtilityAlerts(false);
 				}
 			}
 		});
@@ -193,34 +202,30 @@ public class UnpottedReminderPlugin extends Plugin
 	protected void shutDown()
 	{
 		playerItems = null;
-		alertStart = null;
+		combatTarget = null;
+		alertStarts.clear();
+		lastNotifies.clear();
 		playerExperience.clear();
-		overlayManager.remove(overlay);
-		infoBoxManager.removeInfoBox(infoBox);
+		overlays.values().forEach(overlayManager::remove);
+		infoBoxes.values().forEach(infoBoxManager::removeInfoBox);
 	}
 
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (event.getGroup().equals("unpottedreminder"))
+		if (!event.getGroup().equals("unpottedreminder"))
+			return;
+
+		clientThread.invoke(() ->
 		{
 			blacklisted = splitList(config.blacklist());
 			whitelisted = splitList(config.whitelist());
-
-			if (!config.showOverlay())
-			{
-				overlayManager.remove(overlay);
-				infoBoxManager.removeInfoBox(infoBox);
-			}
-			else if (config.alertDisplayMode() == AlertDisplayMode.INFOBOX)
-			{
-				overlayManager.remove(overlay);
-			}
-			else
-			{
-				infoBoxManager.removeInfoBox(infoBox);
-			}
-		}
+			checkUtilityAlerts(false);
+			overlays.values().forEach(overlayManager::remove);
+			infoBoxes.values().forEach(infoBoxManager::removeInfoBox);
+			for (AlertType type : alertStarts.keySet())
+				showAlert(type);
+		});
 	}
 
 	@Subscribe
@@ -229,7 +234,31 @@ public class UnpottedReminderPlugin extends Plugin
 		if (event.getItemContainer() == client.getItemContainer(InventoryID.INVENTORY))
 		{
 			playerItems = event.getItemContainer().getItems();
+			clearMeleeIfNotNeeded();
+			for (Skill skill : List.of(Skill.RANGED, Skill.MAGIC))
+			{
+				if (alertStarts.containsKey(alertType(skill)) && !hasBoostPotionInInventory(skill))
+					clearAlert(alertType(skill));
+			}
+			checkUtilityAlerts(false);
 		}
+	}
+
+	@Subscribe
+	public void onInteractingChanged(InteractingChanged event)
+	{
+		if (event.getSource() == client.getLocalPlayer())
+			combatTarget = null;
+	}
+
+	@Subscribe
+	public void onVarbitChanged(VarbitChanged event)
+	{
+		if (event.getVarpId() == VarPlayerID.SA_ENERGY || event.getVarbitId() == VarbitID.SURGE_POTION_TIMER)
+			checkUtilityAlert(AlertType.SURGE, true);
+		else if (event.getVarbitId() == VarbitID.RAIDS_PRAYERENHANCE_TIMER
+				|| event.getVarbitId() == VarbitID.PRAYER_REGENERATION_POTION_TIMER)
+			checkUtilityAlert(AlertType.PRAYER, true);
 	}
 
 	@Subscribe
@@ -242,28 +271,40 @@ public class UnpottedReminderPlugin extends Plugin
 
 		int xpDiff = event.getXp() - playerExperience.getOrDefault(skill, -1);
 		int boost = event.getBoostedLevel() - event.getLevel();
+		AlertType type = alertType(skill == Skill.DEFENCE ? getPrimarySkillForDefensive() : skill);
 
 		playerBoosts.put(skill, boost);
 		playerExperience.put(skill, event.getXp());
+		if (type == AlertType.MELEE && skill != Skill.DEFENCE)
+			clearMeleeIfNotNeeded();
+		else if (alertStarts.containsKey(type) && skill != Skill.DEFENCE
+				&& boost > (type == AlertType.RANGED ? config.rangedBoostThreshold() : config.magicBoostThreshold()))
+			clearAlert(type);
 
-		if (config.experienceThreshold() > 0 && xpDiff > config.experienceThreshold())
+		if (experienceThreshold(config, type) > 0 && xpDiff > experienceThreshold(config, type))
 			return;
 
 		if (client.getGameCycle() == potionLastDrankGameCycle)
 			return;
 
+		Player localPlayer = client.getLocalPlayer();
+		combatTarget = localPlayer == null ? null : localPlayer.getInteracting();
+		checkUtilityAlerts(true);
+
 		if (shouldAlert(skill))
 		{
-			alert();
+			alert(type);
 		}
 	}
 
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		if (null != alertStart && Instant.now().minusSeconds(config.timeout()).isAfter(alertStart))
+		for (AlertType type : AlertType.values())
 		{
-			clearAlert();
+			Instant start = alertStarts.get(type);
+			if (start != null && Instant.now().minusSeconds(timeout(config, type)).isAfter(start))
+				clearAlert(type);
 		}
 	}
 
@@ -275,7 +316,6 @@ public class UnpottedReminderPlugin extends Plugin
 		if (msg.contains("You drink some of your") || msg.contains("You crush the salts"))
 		{
 			potionLastDrankGameCycle = client.getGameCycle();
-			clearAlert();
 		}
 	}
 
@@ -285,73 +325,201 @@ public class UnpottedReminderPlugin extends Plugin
 		if ((event.getActor().hasSpotAnim(IMBUED_HEART_GRAPHIC) ||  event.getActor().hasSpotAnim(SATURATED_HEART_GRAPHIC))
 				&& Objects.equals(event.getActor().getName(), client.getLocalPlayer().getName()))
 		{
-			clearAlert();
+			clearAlert(AlertType.MAGIC);
 		}
 	}
 
-	private void alert()
+	private void alert(AlertType type)
 	{
 		boolean shouldNotify = (config.shouldNotify()
-				&& (null == lastNotify || Instant.now().minusSeconds(config.notifyCooldown()).isAfter(lastNotify)));
+				&& (lastNotifies.get(type) == null
+					|| Instant.now().minusSeconds(config.notifyCooldown()).isAfter(lastNotifies.get(type))));
 
-		alertStart = Instant.now();
-
-		if (config.showOverlay())
-		{
-			if (config.alertDisplayMode() == AlertDisplayMode.INFOBOX)
-			{
-				if (!infoBoxManager.getInfoBoxes().contains(infoBox))
-				{
-					infoBoxManager.addInfoBox(infoBox);
-				}
-			}
-			else
-			{
-				overlayManager.add(overlay);
-			}
-		}
+		String message = resolveAlertMessage(config, type);
+		alertStarts.put(type, Instant.now());
+		showAlert(type);
 
 		if (shouldNotify)
 		{
-			notifier.notify(resolveAlertMessage(config));
-			lastNotify = Instant.now();
+			notifier.notify(message);
+			lastNotifies.put(type, Instant.now());
 		}
 	}
 
-	static String resolveAlertMessage(UnpottedReminderConfig config)
+	private void showAlert(AlertType type)
 	{
-		String message = config.alertMessage();
+		if (!config.showOverlay())
+			return;
+
+		if (config.alertDisplayMode() == AlertDisplayMode.INFOBOX)
+		{
+			if (!infoBoxManager.getInfoBoxes().contains(infoBoxes.get(type)))
+			{
+				infoBoxManager.addInfoBox(infoBoxes.get(type));
+			}
+		}
+		else
+		{
+			overlayManager.add(overlays.get(type));
+		}
+	}
+
+	static String resolveAlertMessage(UnpottedReminderConfig config, AlertType type)
+	{
+		String message;
+		switch (type)
+		{
+			case RANGED: message = config.rangedAlertMessage(); break;
+			case MAGIC: message = config.magicAlertMessage(); break;
+			case SURGE: message = config.surgeAlertMessage(); break;
+			case PRAYER: message = config.prayerAlertMessage(); break;
+			default: message = config.meleeAlertMessage();
+		}
 		return message == null || message.trim().isEmpty() ? DEFAULT_ALERT_MESSAGE : message;
 	}
 
-	private void clearAlert()
+	static int experienceThreshold(UnpottedReminderConfig config, AlertType type)
 	{
-		overlayManager.remove(overlay);
-		infoBoxManager.removeInfoBox(infoBox);
-		alertStart = null;
+		return type == AlertType.RANGED ? config.rangedExperienceThreshold()
+				: type == AlertType.MAGIC ? config.magicExperienceThreshold() : config.meleeExperienceThreshold();
+	}
+
+	static boolean meleeReminderNeeded(UnpottedReminderConfig config, Map<Skill, Integer> boosts,
+		boolean attackPotion, boolean strengthPotion)
+	{
+		return config.enableMelee()
+				&& ((strengthPotion && isMeleeBoostBelowThreshold(config, boosts, Skill.STRENGTH))
+					|| (attackPotion && isMeleeBoostBelowThreshold(config, boosts, Skill.ATTACK)));
+	}
+
+	static int timeout(UnpottedReminderConfig config, AlertType type)
+	{
+		switch (type)
+		{
+			case RANGED: return config.rangedTimeout();
+			case MAGIC: return config.magicTimeout();
+			case SURGE: return config.surgeTimeout();
+			case PRAYER: return config.prayerTimeout();
+			default: return config.meleeTimeout();
+		}
+	}
+
+	static boolean shouldFlash(UnpottedReminderConfig config, AlertType type)
+	{
+		switch (type)
+		{
+			case RANGED: return config.rangedShouldFlash();
+			case MAGIC: return config.magicShouldFlash();
+			case SURGE: return config.surgeShouldFlash();
+			case PRAYER: return config.prayerShouldFlash();
+			default: return config.meleeShouldFlash();
+		}
+	}
+
+	static Color flashColor1(UnpottedReminderConfig config, AlertType type)
+	{
+		switch (type)
+		{
+			case RANGED: return config.rangedFlashColor1();
+			case MAGIC: return config.magicFlashColor1();
+			case SURGE: return config.surgeFlashColor1();
+			case PRAYER: return config.prayerFlashColor1();
+			default: return config.meleeFlashColor1();
+		}
+	}
+
+	static Color flashColor2(UnpottedReminderConfig config, AlertType type)
+	{
+		switch (type)
+		{
+			case RANGED: return config.rangedFlashColor2();
+			case MAGIC: return config.magicFlashColor2();
+			case SURGE: return config.surgeFlashColor2();
+			case PRAYER: return config.prayerFlashColor2();
+			default: return config.meleeFlashColor2();
+		}
+	}
+
+	private void clearAlert(AlertType type)
+	{
+		overlayManager.remove(overlays.get(type));
+		infoBoxManager.removeInfoBox(infoBoxes.get(type));
+		alertStarts.remove(type);
+	}
+
+	private void clearMeleeIfNotNeeded()
+	{
+		if (alertStarts.containsKey(AlertType.MELEE) && (playerItems == null
+				|| !meleeReminderNeeded(config, playerBoosts,
+					hasBoostPotionInInventory(Skill.ATTACK), hasBoostPotionInInventory(Skill.STRENGTH))))
+			clearAlert(AlertType.MELEE);
+	}
+
+	private static AlertType alertType(Skill skill)
+	{
+		return skill == Skill.RANGED ? AlertType.RANGED : skill == Skill.MAGIC ? AlertType.MAGIC : AlertType.MELEE;
+	}
+
+	private void checkUtilityAlerts(boolean allowAlert)
+	{
+		checkUtilityAlert(AlertType.SURGE, allowAlert);
+		checkUtilityAlert(AlertType.PRAYER, allowAlert);
+	}
+
+	private void checkUtilityAlert(AlertType type, boolean allowAlert)
+	{
+		if (!utilityNeeded(type, config, client, playerItems))
+		{
+			if (alertStarts.containsKey(type))
+				clearAlert(type);
+		}
+		else if (allowAlert && !alertStarts.containsKey(type) && canAlertUtility())
+			alert(type);
+	}
+
+	static boolean utilityNeeded(AlertType type, UnpottedReminderConfig config, Client client, Item[] playerItems)
+	{
+		if (playerItems == null)
+			return false;
+		if (type == AlertType.SURGE)
+			return config.enableSurge() && hasItem(playerItems, ItemID._4DOSESURGE)
+					&& client.getVarpValue(VarPlayerID.SA_ENERGY) <= 750
+					&& client.getVarbitValue(VarbitID.SURGE_POTION_TIMER) == 0;
+		return config.enablePrayer()
+				&& (hasItem(playerItems, ItemID.RAIDS_VIAL_PRAYER_WEAK_1)
+					|| hasItem(playerItems, ItemID._4DOSE1PRAYER_REGENERATION))
+				&& client.getVarbitValue(VarbitID.RAIDS_PRAYERENHANCE_TIMER) == 0
+				&& client.getVarbitValue(VarbitID.PRAYER_REGENERATION_POTION_TIMER) == 0;
+	}
+
+	private static boolean hasItem(Item[] items, int baseItemId)
+	{
+		return Arrays.stream(items).anyMatch(item -> item != null
+				&& ItemVariationMapping.map(item.getId()) == baseItemId);
 	}
 
 	private boolean shouldAlert(Skill skill)
 	{
-		if (client.getGameState() != GameState.LOGGED_IN)
-			return false;
-
 		if (Skill.DEFENCE.equals(skill))
 			skill = getPrimarySkillForDefensive();
 
-		if (isSkillDisabled(skill))
-			return false;
-
-		if (!client.isInInstancedRegion() && config.onlyInInstances())
-			return false;
-
-		if (!interactingShouldAlert())
-			return false;
-
-		if (!hasBoostPotionInInventory(skill))
+		if (!canAlert() || isSkillDisabled(skill) || playerItems == null || !hasBoostPotionInInventory(skill))
 			return false;
 
 		return isBoostBelowThreshold(skill);
+	}
+
+	private boolean canAlert()
+	{
+		return client.getGameState() == GameState.LOGGED_IN && client.getLocalPlayer() != null
+				&& (client.isInInstancedRegion() || !config.onlyInInstances()) && interactingShouldAlert();
+	}
+
+	private boolean canAlertUtility()
+	{
+		Player localPlayer = client.getLocalPlayer();
+		return canAlert() && (localPlayer.getInteracting() == null
+				|| localPlayer.getInteracting() == combatTarget);
 	}
 
 	private Skill getPrimarySkillForDefensive()
@@ -384,17 +552,15 @@ public class UnpottedReminderPlugin extends Plugin
 		String interactingName = client.getLocalPlayer().getInteracting() != null
 				? client.getLocalPlayer().getInteracting().getName() : null;
 
-		if (null == interactingName)
+		if (interactingName == null)
 		{
 			return config.alertWhenNotInteracting();
 		}
-		else
-		{
-			boolean isBlackListed = config.useBlacklist() && blacklisted.stream().anyMatch(npcName -> WildcardMatcher.matches(npcName, interactingName));
-			boolean isWhitelisted = !config.useWhitelist() || whitelisted.stream().anyMatch(npcName -> WildcardMatcher.matches(npcName, interactingName));
 
-			return isWhitelisted && !isBlackListed;
-		}
+		boolean isBlackListed = config.useBlacklist() && blacklisted.stream().anyMatch(npcName -> WildcardMatcher.matches(npcName, interactingName));
+		boolean isWhitelisted = !config.useWhitelist() || whitelisted.stream().anyMatch(npcName -> WildcardMatcher.matches(npcName, interactingName));
+
+		return isWhitelisted && !isBlackListed;
 	}
 
 	private boolean hasBoostPotionInInventory(Skill skill)
@@ -433,7 +599,7 @@ public class UnpottedReminderPlugin extends Plugin
 
 	private boolean isBoostBelowThreshold(Skill skill)
 	{
-		if (MELEE_SKILLS.contains(skill) && config.enableMelee() && isMeleeBoostBelowThreshold(skill))
+		if (MELEE_SKILLS.contains(skill) && config.enableMelee() && isMeleeBoostBelowThreshold(config, playerBoosts, skill))
 			return true;
 
 		if (Skill.RANGED == skill && config.enableRanged()
@@ -444,19 +610,11 @@ public class UnpottedReminderPlugin extends Plugin
 				&& playerBoosts.getOrDefault(Skill.MAGIC, -1) <= config.magicBoostThreshold());
 	}
 
-	private boolean isMeleeBoostBelowThreshold(Skill skill)
+	private static boolean isMeleeBoostBelowThreshold(UnpottedReminderConfig config, Map<Skill, Integer> boosts, Skill skill)
 	{
-		if (Skill.STRENGTH == skill)
-		{
-			return playerBoosts.getOrDefault(Skill.STRENGTH, -1) <= config.meleeBoostThreshold();
-		}
-
-		if (Skill.ATTACK == skill && (config.meleeAlertStyle() == MeleeAlertStyle.ATTACK_AND_STRENGTH))
-		{
-			return playerBoosts.getOrDefault(Skill.ATTACK, -1) <= config.meleeBoostThreshold();
-		}
-
-		return false;
+		return (skill == Skill.STRENGTH
+				|| (skill == Skill.ATTACK && config.meleeAlertStyle() == MeleeAlertStyle.ATTACK_AND_STRENGTH))
+				&& boosts.getOrDefault(skill, -1) <= config.meleeBoostThreshold();
 	}
 
 	private boolean usingDefensiveMagic()

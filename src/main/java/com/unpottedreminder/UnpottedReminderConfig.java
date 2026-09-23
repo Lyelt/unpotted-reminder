@@ -32,11 +32,26 @@ import java.awt.*;
 @ConfigGroup("unpottedreminder")
 public interface UnpottedReminderConfig extends Config
 {
+	@ConfigSection(name = "Melee", description = "Melee reminders", position = 25, closedByDefault = true)
+	String MELEE_SECTION = "melee";
+
+	@ConfigSection(name = "Ranged", description = "Ranged reminders", position = 26, closedByDefault = true)
+	String RANGED_SECTION = "ranged";
+
+	@ConfigSection(name = "Magic", description = "Magic reminders", position = 27, closedByDefault = true)
+	String MAGIC_SECTION = "magic";
+
+	@ConfigSection(name = "Surge", description = "Surge potion reminders", position = 28, closedByDefault = true)
+	String SURGE_SECTION = "surge";
+
+	@ConfigSection(name = "Prayer Regeneration", description = "Prayer regeneration reminders", position = 29, closedByDefault = true)
+	String PRAYER_SECTION = "prayer";
+
 	@ConfigItem(
 			keyName = "enableMelee",
 			name = "Alert for Melee",
 			description = "Whether or not the warning should display when attacking with melee",
-			position = 1
+			position = 1, section = MELEE_SECTION
 	)
 	default boolean enableMelee()
 	{
@@ -47,7 +62,7 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "meleeAlertStyle",
 			name = "Melee Alert Style",
 			description = "Which attack style boost will alert you when using melee",
-			position = 2
+			position = 2, section = MELEE_SECTION
 	)
 	default MeleeAlertStyle meleeAlertStyle()
 	{
@@ -58,7 +73,7 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "enableRanged",
 			name = "Alert for Ranged",
 			description = "Whether or not the warning should display when attacking with ranged",
-			position = 3
+			position = 1, section = RANGED_SECTION
 	)
 	default boolean enableRanged()
 	{
@@ -69,7 +84,7 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "enableMagic",
 			name = "Alert for Magic",
 			description = "Whether or not the warning should display when attacking with magic",
-			position = 4
+			position = 1, section = MAGIC_SECTION
 	)
 	default boolean enableMagic()
 	{
@@ -81,7 +96,7 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "meleeBoostThreshold",
 			name = "Melee Boost Threshold",
 			description = "Don't alert when melee stats are boosted above this amount",
-			position = 5
+			position = 3, section = MELEE_SECTION
 	)
 	default int meleeBoostThreshold()
 	{
@@ -92,7 +107,7 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "rangedBoostThreshold",
 			name = "Ranged Boost Threshold",
 			description = "Don't alert when ranged stats are boosted above this amount",
-			position = 6
+			position = 2, section = RANGED_SECTION
 	)
 	default int rangedBoostThreshold()
 	{
@@ -103,7 +118,7 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "magicBoostThreshold",
 			name = "Magic Boost Threshold",
 			description = "Don't alert when magic stats are boosted above this amount",
-			position = 7
+			position = 2, section = MAGIC_SECTION
 	)
 	default int magicBoostThreshold()
 	{
@@ -114,10 +129,10 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "timeout",
 			name = "Timeout",
 			description = "Stop showing warning after this long in seconds (unless triggered again)",
-			position = 8
+			position = 5, section = MELEE_SECTION
 	)
 	@Units(Units.SECONDS)
-	default int timeout()
+	default int meleeTimeout()
 	{
 		return 10;
 	}
@@ -126,9 +141,9 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "experienceThreshold",
 			name = "Xp Threshold",
 			description = "Don't alert when xp drop is more than this amount (0 to disable)",
-			position = 9
+			position = 4, section = MELEE_SECTION
 	)
-	default int experienceThreshold()
+	default int meleeExperienceThreshold()
 	{
 		return 500;
 	}
@@ -137,9 +152,9 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "shouldFlash",
 			name = "Flash overlay",
 			description = "Whether or not the overlay should flash colors",
-			position = 10
+			position = 6, section = MELEE_SECTION
 	)
-	default boolean shouldFlash()
+	default boolean meleeShouldFlash()
 	{
 		return false;
 	}
@@ -149,9 +164,9 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "flashColor1",
 			name = "Flash color 1",
 			description = "First color to flash between if 'Flash overlay' is on",
-			position = 11
+			position = 7, section = MELEE_SECTION
 	)
-	default Color flashColor1()
+	default Color meleeFlashColor1()
 	{
 		return new Color(0, 128, 255, 150);
 	}
@@ -161,11 +176,105 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "flashColor2",
 			name = "Flash color 2",
 			description = "Second color to flash between if 'Flash overlay' is on",
-			position = 12
+			position = 8, section = MELEE_SECTION
 	)
-	default Color flashColor2()
+	default Color meleeFlashColor2()
 	{
 		return new Color(50, 50, 50, 150);
+	}
+
+	@ConfigItem(keyName = "rangedExperienceThreshold", name = "Xp Threshold",
+			description = "Don't alert when xp drop is more than this amount (0 to disable)",
+			position = 3, section = RANGED_SECTION)
+	default int rangedExperienceThreshold()
+	{
+		return 500;
+	}
+
+	@Units(Units.SECONDS)
+	@ConfigItem(keyName = "rangedTimeout", name = "Timeout",
+			description = "Stop showing warning after this long in seconds (unless triggered again)",
+			position = 4, section = RANGED_SECTION)
+	default int rangedTimeout()
+	{
+		return 10;
+	}
+
+	@ConfigItem(keyName = "rangedShouldFlash", name = "Flash overlay",
+			description = "Whether or not the overlay should flash colors", position = 5, section = RANGED_SECTION)
+	default boolean rangedShouldFlash()
+	{
+		return false;
+	}
+
+	@Alpha
+	@ConfigItem(keyName = "rangedFlashColor1", name = "Flash color 1",
+			description = "First color to flash between if 'Flash overlay' is on", position = 6, section = RANGED_SECTION)
+	default Color rangedFlashColor1()
+	{
+		return new Color(0, 128, 255, 150);
+	}
+
+	@Alpha
+	@ConfigItem(keyName = "rangedFlashColor2", name = "Flash color 2",
+			description = "Second color to flash between if 'Flash overlay' is on", position = 7, section = RANGED_SECTION)
+	default Color rangedFlashColor2()
+	{
+		return new Color(50, 50, 50, 150);
+	}
+
+	@ConfigItem(keyName = "rangedAlertMessage", name = "Alert message",
+			description = "Text shown in the overlay, infobox tooltip, and notification", position = 8, section = RANGED_SECTION)
+	default String rangedAlertMessage()
+	{
+		return "Drink a boost potion!";
+	}
+
+	@ConfigItem(keyName = "magicExperienceThreshold", name = "Xp Threshold",
+			description = "Don't alert when xp drop is more than this amount (0 to disable)",
+			position = 3, section = MAGIC_SECTION)
+	default int magicExperienceThreshold()
+	{
+		return 500;
+	}
+
+	@Units(Units.SECONDS)
+	@ConfigItem(keyName = "magicTimeout", name = "Timeout",
+			description = "Stop showing warning after this long in seconds (unless triggered again)",
+			position = 4, section = MAGIC_SECTION)
+	default int magicTimeout()
+	{
+		return 10;
+	}
+
+	@ConfigItem(keyName = "magicShouldFlash", name = "Flash overlay",
+			description = "Whether or not the overlay should flash colors", position = 5, section = MAGIC_SECTION)
+	default boolean magicShouldFlash()
+	{
+		return false;
+	}
+
+	@Alpha
+	@ConfigItem(keyName = "magicFlashColor1", name = "Flash color 1",
+			description = "First color to flash between if 'Flash overlay' is on", position = 6, section = MAGIC_SECTION)
+	default Color magicFlashColor1()
+	{
+		return new Color(0, 128, 255, 150);
+	}
+
+	@Alpha
+	@ConfigItem(keyName = "magicFlashColor2", name = "Flash color 2",
+			description = "Second color to flash between if 'Flash overlay' is on", position = 7, section = MAGIC_SECTION)
+	default Color magicFlashColor2()
+	{
+		return new Color(50, 50, 50, 150);
+	}
+
+	@ConfigItem(keyName = "magicAlertMessage", name = "Alert message",
+			description = "Text shown in the overlay, infobox tooltip, and notification", position = 8, section = MAGIC_SECTION)
+	default String magicAlertMessage()
+	{
+		return "Drink a boost potion!";
 	}
 
 	@ConfigItem(
@@ -283,11 +392,103 @@ public interface UnpottedReminderConfig extends Config
 			keyName = "alertMessage",
 			name = "Alert message",
 			description = "The message to display in the overlay and notification. Also shown as the infobox tooltip",
-			position = 23
+			position = 9, section = MELEE_SECTION
 	)
-	default String alertMessage()
+	default String meleeAlertMessage()
 	{
 		return "Drink a boost potion!";
+	}
+
+	@ConfigItem(keyName = "enableSurge", name = "Alert for Surge",
+			description = "Remind when a Surge potion can restore special attack energy", position = 1, section = SURGE_SECTION)
+	default boolean enableSurge()
+	{
+		return false;
+	}
+
+	@Units(Units.SECONDS)
+	@ConfigItem(keyName = "surgeTimeout", name = "Timeout",
+			description = "Stop showing the reminder after this many seconds", position = 2, section = SURGE_SECTION)
+	default int surgeTimeout()
+	{
+		return 10;
+	}
+
+	@ConfigItem(keyName = "surgeShouldFlash", name = "Flash overlay",
+			description = "Whether or not the overlay should flash colors", position = 3, section = SURGE_SECTION)
+	default boolean surgeShouldFlash()
+	{
+		return false;
+	}
+
+	@Alpha
+	@ConfigItem(keyName = "surgeFlashColor1", name = "Flash color 1",
+			description = "First overlay color", position = 4, section = SURGE_SECTION)
+	default Color surgeFlashColor1()
+	{
+		return new Color(89, 123, 132, 150);
+	}
+
+	@Alpha
+	@ConfigItem(keyName = "surgeFlashColor2", name = "Flash color 2",
+			description = "Second overlay color", position = 5, section = SURGE_SECTION)
+	default Color surgeFlashColor2()
+	{
+		return new Color(50, 50, 50, 150);
+	}
+
+	@ConfigItem(keyName = "surgeAlertMessage", name = "Alert message",
+			description = "Text shown in the overlay, infobox tooltip, and notification",
+			position = 6, section = SURGE_SECTION)
+	default String surgeAlertMessage()
+	{
+		return "Drink a Surge potion!";
+	}
+
+	@ConfigItem(keyName = "enablePrayer", name = "Alert for Prayer Regeneration",
+			description = "Prayer Enhance also qualifies; remind when neither effect is active", position = 1, section = PRAYER_SECTION)
+	default boolean enablePrayer()
+	{
+		return false;
+	}
+
+	@Units(Units.SECONDS)
+	@ConfigItem(keyName = "prayerTimeout", name = "Timeout",
+			description = "Stop showing the reminder after this many seconds", position = 2, section = PRAYER_SECTION)
+	default int prayerTimeout()
+	{
+		return 10;
+	}
+
+	@ConfigItem(keyName = "prayerShouldFlash", name = "Flash overlay",
+			description = "Whether or not the overlay should flash colors", position = 3, section = PRAYER_SECTION)
+	default boolean prayerShouldFlash()
+	{
+		return false;
+	}
+
+	@Alpha
+	@ConfigItem(keyName = "prayerFlashColor1", name = "Flash color 1",
+			description = "First overlay color", position = 4, section = PRAYER_SECTION)
+	default Color prayerFlashColor1()
+	{
+		return new Color(140, 89, 80, 150);
+	}
+
+	@Alpha
+	@ConfigItem(keyName = "prayerFlashColor2", name = "Flash color 2",
+			description = "Second overlay color", position = 5, section = PRAYER_SECTION)
+	default Color prayerFlashColor2()
+	{
+		return new Color(50, 50, 50, 150);
+	}
+
+	@ConfigItem(keyName = "prayerAlertMessage", name = "Alert message",
+			description = "Text shown in the overlay, infobox tooltip, and notification",
+			position = 6, section = PRAYER_SECTION)
+	default String prayerAlertMessage()
+	{
+		return "Activate prayer regeneration!";
 	}
 
 	@ConfigItem(

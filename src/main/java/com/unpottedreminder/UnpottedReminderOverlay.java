@@ -35,7 +35,6 @@ import net.runelite.client.ui.overlay.components.ImageComponent;
 import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.util.AsyncBufferedImage;
 
-import javax.inject.Inject;
 import java.awt.*;
 
 
@@ -44,13 +43,21 @@ class UnpottedReminderOverlay extends OverlayPanel
 	private final Client client;
 	private final UnpottedReminderConfig config;
 	private final AsyncBufferedImage vialImage;
+	private final UnpottedReminderPlugin.AlertType type;
 
-	@Inject
-	private UnpottedReminderOverlay(Client client, UnpottedReminderConfig config, ItemManager itemManager)
+	UnpottedReminderOverlay(Client client, UnpottedReminderConfig config, ItemManager itemManager,
+		UnpottedReminderPlugin.AlertType type)
 	{
 		this.client = client;
 		this.config = config;
 		this.vialImage = itemManager.getImage(ItemID.VIAL_EMPTY);
+		this.type = type;
+	}
+
+	@Override
+	public String getName()
+	{
+		return "Unpotted Reminder " + type;
 	}
 
 	@Override
@@ -66,29 +73,29 @@ class UnpottedReminderOverlay extends OverlayPanel
 		}
 		else
 		{
-			String alertMessage = UnpottedReminderPlugin.resolveAlertMessage(config);
+			String message = UnpottedReminderPlugin.resolveAlertMessage(config, type);
 			panelComponent.getChildren().add((LineComponent.builder())
-					.left(alertMessage)
+					.left(message)
 					.build());
-			contentWidth = graphics.getFontMetrics().stringWidth(alertMessage);
+			contentWidth = graphics.getFontMetrics().stringWidth(message);
 		}
 
 		panelComponent.setPreferredSize(new Dimension(contentWidth + 2 * ComponentConstants.STANDARD_BORDER, 0));
 
-		if (config.shouldFlash())
+		if (UnpottedReminderPlugin.shouldFlash(config, type))
 		{
 			if (client.getGameCycle() % 40 >= 20)
 			{
-				panelComponent.setBackgroundColor(config.flashColor1());
+				panelComponent.setBackgroundColor(UnpottedReminderPlugin.flashColor1(config, type));
 			}
 			else
 			{
-				panelComponent.setBackgroundColor(config.flashColor2());
+				panelComponent.setBackgroundColor(UnpottedReminderPlugin.flashColor2(config, type));
 			}
 		}
 		else
 		{
-			panelComponent.setBackgroundColor(config.flashColor1());
+			panelComponent.setBackgroundColor(UnpottedReminderPlugin.flashColor1(config, type));
 		}
 
 		setPosition(OverlayPosition.BOTTOM_RIGHT);
