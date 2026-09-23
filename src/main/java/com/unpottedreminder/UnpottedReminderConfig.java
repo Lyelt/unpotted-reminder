@@ -168,7 +168,7 @@ public interface UnpottedReminderConfig extends Config
 	)
 	default Color meleeFlashColor1()
 	{
-		return new Color(0, 128, 255, 150);
+		return new Color(0, 126, 43, 150);
 	}
 
 	@Alpha
@@ -259,7 +259,7 @@ public interface UnpottedReminderConfig extends Config
 			description = "First color to flash between if 'Flash overlay' is on", position = 6, section = MAGIC_SECTION)
 	default Color magicFlashColor1()
 	{
-		return new Color(0, 128, 255, 150);
+		return new Color(164, 0, 189, 150);
 	}
 
 	@Alpha
